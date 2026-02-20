@@ -119,6 +119,47 @@ Apply these principles to every diagram:
 
 **Animation earns its place.** Staggered fade-ins on page load are almost always worth it — they guide the eye through the diagram's hierarchy. Mix animation types by role: `fadeUp` for cards, `fadeScale` for KPIs and badges, `drawIn` for SVG connectors, `countUp` for hero numbers. Hover transitions on interactive-feeling elements make the diagram feel alive. Always respect `prefers-reduced-motion`. CSS transitions and keyframes handle most cases. For orchestrated multi-element sequences, anime.js via CDN is available (see `./references/libraries.md`).
 
+### 3b. Code Snippets in Plans
+
+**When visualizing implementation plans, specs, or technical proposals**, always include the most important code snippets directly in the HTML output. The reader should be able to understand the key implementation details without leaving the page.
+
+**What to include:**
+- Key function signatures and handler changes (the "what changes" code)
+- SQL DDL for new tables or schema changes
+- Configuration changes (env vars, turbo.json entries, docker-compose additions)
+- Critical type definitions or interfaces being added/modified
+- Example API request/response payloads
+- Shell commands from runbooks or setup steps
+
+**What NOT to include:**
+- Entire file contents — only the relevant excerpt
+- Boilerplate imports or standard setup code
+- Code that is unchanged and only provides context
+
+**Rendering code blocks:** Use a styled `<pre><code>` block inside cards or collapsible sections. Apply syntax-appropriate styling:
+
+```css
+.code-block {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text);
+  margin: 10px 0;
+}
+.code-block .code-comment { color: var(--text-dim); }
+.code-block .code-keyword { color: var(--accent); }
+.code-block .code-string { color: var(--green); }
+.code-block .code-fn { color: var(--orange); }
+```
+
+**Placement:** Put code snippets inside the relevant section — DDL under the schema section, handler changes under the wiring section, etc. Use `<details>/<summary>` for longer snippets so they don't overwhelm the visual flow, but keep short critical snippets (under 15 lines) visible by default. Always include a file path label above the code block so the reader knows where the code lives.
+
 ### 4. Deliver
 
 **Output location:** Write to `~/.agent/diagrams/`. Use a descriptive filename based on content: `modem-architecture.html`, `pipeline-flow.html`, `schema-overview.html`. The directory persists across sessions.
