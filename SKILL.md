@@ -121,44 +121,155 @@ Apply these principles to every diagram:
 
 ### 3b. Code Snippets in Plans
 
-**When visualizing implementation plans, specs, or technical proposals**, always include the most important code snippets directly in the HTML output. The reader should be able to understand the key implementation details without leaving the page.
+**Code is the primary deliverable of plan visualizations.** When visualizing implementation plans, specs, or technical proposals, always read the actual source files and include the most important code snippets directly in the HTML output. The reader should be able to understand the key implementation details — the exact functions that change, the exact SQL that runs, the exact config that needs updating — without leaving the page. Don't be shy about including code. A plan without code snippets is just a summary.
 
-**What to include:**
-- Key function signatures and handler changes (the "what changes" code)
-- SQL DDL for new tables or schema changes
-- Configuration changes (env vars, turbo.json entries, docker-compose additions)
+**Before generating the HTML, read the relevant source files.** Use the Read tool, `git show <commit>:<path>`, or Grep to pull the actual code from the codebase.
+
+#### Snippet selection rubric (do this before writing HTML)
+
+1. **Inventory candidates.** List 8–15 candidate snippets mentally: file, symbol/section, why it matters, which question it answers, estimated line count.
+
+2. **Pick snippets using the slot budget.** You have **6 snippet slots** by default. A before/after pair counts as **1 slot** (rendered as two code blocks under one card). Fill the 4 required slots first, then use the 2 optional slots if they add signal.
+
+   **Required (4 slots — must hit):**
+   - **Entry/wiring** — where does the request enter? (route definition, handler registration)
+   - **Validation/auth** — where are guards, feature flags, or permission checks?
+   - **Core rule** — the main business logic function (handler, service function)
+   - **Persistence** — where is data written/read? (SQL, Drizzle query, DDL)
+
+   **Substitution rule:** If a required slot doesn't apply (e.g., UI-only changes have no persistence, config-only changes have no handler), substitute from this list: **integration boundary**, **UI entrypoint**, **background job wiring**, **cache layer**, **observability/metrics**. If a single snippet satisfies multiple required slots (e.g., handler does validation + core logic), that's fine — count it as 1 slot and move the freed slot to optional.
+
+   **Optional (0–2 slots):**
+   - **Config** — env vars, turbo.json entries, docker-compose changes
+   - **Failure paths** — error handling, skip conditions, retry logic
+   - **Critical types** — interfaces or type definitions that define the contract
+
+3. **Exceed the budget only with `<details>`.** If the plan genuinely needs more than 6 snippets, put extras inside `<details>` blocks labeled "Expanded context." The visible page should never feel like a code dump.
+
+#### What to include
+
+- Key function signatures and handler changes
+- SQL DDL for new tables or schema changes — full CREATE TABLE statements, not summaries
+- Configuration changes (env vars, turbo.json entries) — show the exact lines being added
 - Critical type definitions or interfaces being added/modified
-- Example API request/response payloads
+- Validation logic, error handling patterns, and feature flag checks — these are where bugs hide
+- Database queries (Drizzle/SQL) that power key features — show the joins and WHERE clauses
 - Shell commands from runbooks or setup steps
 
-**What NOT to include:**
-- Entire file contents — only the relevant excerpt
-- Boilerplate imports or standard setup code
-- Code that is unchanged and only provides context
+#### What NOT to include
 
-**Rendering code blocks:** Use a styled `<pre><code>` block inside cards or collapsible sections. Apply syntax-appropriate styling:
+- Entire 200+ line files — extract the relevant contiguous excerpt
+- Boilerplate imports (unless the imports themselves are the change)
+- Code that is unchanged and only provides context (mention it in prose instead)
+
+#### Truthfulness rules
+
+Every code block must declare its **provenance** — where the code came from. Use one of these labels in the file path label or as a small badge:
+
+- **Source: commit `abc1234`** — extracted via `git show <rev>:<path>`. Use for cherry-pick references and branch comparisons.
+- **Source: working tree** — from the current checkout. If uncommitted, append **(uncommitted)** so readers know it's not merged.
+- **Source: prompt (verbatim)** — code provided by the user in the conversation or spec, included as-is.
+- **Proposed (draft)** — code that doesn't exist yet. Render with distinct visual treatment (dashed border, "DRAFT" badge). Never present proposed code as if it were real checked-in code.
+
+**Strict rules:**
+- **"Current" snippets** MUST come from the working tree or `git show <rev>:<path>`.
+- **"After" snippets** may ONLY be shown if they already exist in the working tree or a referenced commit/branch.
+- **No `...` or ellipsis inside code blocks.** Every excerpt must be contiguous real lines. If you need to omit middle sections, use two separate code blocks or put the full version in an expanded `<details>` block.
+
+#### Secrets/PII rule
+
+- Never embed secret values (tokens, passwords, connection strings, private keys).
+- Redact sensitive literals and replace with `<REDACTED>`. Prefer showing env var names and where they're read, not their values.
+
+#### Snippet contract (every code block must include)
+
+1. **File path label** above the block. Every snippet must declare provenance. Canonical formats:
+   - Working tree (committed): `apps/server/src/api/station-time/handlers.ts:75-98`
+   - Working tree (uncommitted): `handlers.ts:75-98 (uncommitted)`
+   - From a specific commit: `handlers.ts:75-98 (commit abc1234)`
+   - From user prompt: `Source: prompt (verbatim) — VTA writeback SQL`
+   - Proposed/draft: `handlers.ts (Proposed draft)` — with dashed border or "DRAFT" badge
+2. **Symbol name** in the card title (function, type, or table name)
+3. **1-sentence caption** stating what to look for — the invariant, edge case, or behavior change (e.g., "Look for: SQL-first write — VTA write happens before Postgres update")
+
+#### Rendering code blocks
+
+Use a styled `<pre>` with a file path label above it. Apply syntax-appropriate `<span>` classes for highlighting:
+
+```html
+<div class="code-block-wrap">
+  <span class="code-file-label">apps/server/src/api/station-time/handlers.ts:75-98</span>
+  <pre class="code-block"><span class="kw">export async function</span> <span class="fn">handleEndStationTime</span>(
+  input: <span class="tp">EndStationTimeInput</span>,
+): <span class="tp">Promise</span>&lt;<span class="tp">EndStationTimeResponse</span>&gt; {
+  <span class="cm">// SQL-first: write to VTA before Postgres</span>
+  <span class="kw">const</span> writeBack = <span class="kw">await</span> <span class="fn">writeBackStationTimeEntryToVta</span>({
+    entryId: input.entryId,
+    endedAtOverride: endedAt,
+  });
+  <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">endStationTime</span>({ ...input, endedAtOverride: endedAt });
+  <span class="kw">return</span> { entry, durationSeconds, operationCompleted };
+}</pre>
+</div>
+```
 
 ```css
+/* File path label sits above the code block */
+.code-file-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  padding: 6px 14px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  display: inline-block;
+}
+
+/* Code block connects to the label */
 .code-block {
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0 8px 8px 8px;
   padding: 14px 18px;
   font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.65;
   overflow-x: auto;
   white-space: pre;
   color: var(--text);
-  margin: 10px 0;
+  margin: 0;
 }
-.code-block .code-comment { color: var(--text-dim); }
-.code-block .code-keyword { color: var(--accent); }
-.code-block .code-string { color: var(--green); }
-.code-block .code-fn { color: var(--orange); }
+
+/* Syntax highlighting classes */
+.code-block .cm { color: var(--text-dim); }   /* comment */
+.code-block .kw { color: var(--accent); }     /* keyword: const, await, if, return, export */
+.code-block .st { color: var(--green); }      /* string literal */
+.code-block .fn { color: var(--orange); }     /* function name */
+.code-block .tp { color: var(--purple); }     /* type: interface, type alias */
+.code-block .num { color: var(--yellow); }    /* number literal */
 ```
 
-**Placement:** Put code snippets inside the relevant section — DDL under the schema section, handler changes under the wiring section, etc. Use `<details>/<summary>` for longer snippets so they don't overwhelm the visual flow, but keep short critical snippets (under 15 lines) visible by default. Always include a file path label above the code block so the reader knows where the code lives.
+#### Before/after pattern
+
+When a function or config is changing, show both versions. A before/after pair always counts as **1 snippet slot**, regardless of layout:
+
+- Put the **"before"** (current code) in the "Current State" section with a brief caption noting what's missing or wrong.
+- Put the **"after"** in the relevant implementation section. This must come from a real commit or branch — use `git show <commit>:<path>` to extract it.
+- The split placement across sections makes the change immediately obvious without needing a diff viewer. Even though they appear in different sections, they consume only 1 slot in the budget.
+- **Naming rule:** Only call it "after" if the code exists in a real commit or the working tree. If it doesn't exist yet, call it **"Proposed (draft)"** — never "after."
+
+#### Placement rules
+
+- Put code snippets inside the relevant section — DDL under the schema section, handler changes under the wiring section, config changes under the env section.
+- **Show as few lines as needed to prove the point** — there is no minimum. A 6-line snippet that nails the invariant beats a padded 20-line excerpt. If the meaningful excerpt happens to be 20+ lines, that's fine too — just keep it contiguous.
+- **Use `<details>/<summary>` for expanded context** — the full function, complete DDL, exhaustive config. Label it "Expanded context" so readers know it's supplementary.
+- **Always include the file path label** above the code block so the reader knows exactly where the code lives.
+- When the plan references a commit (cherry-pick, etc.), show the actual code from that commit, not a prose description of what it does.
+- Consider adding a **file index** near the top of the page listing all files touched by the plan and why, with in-page anchors to the relevant snippets.
 
 ### 4. Deliver
 
